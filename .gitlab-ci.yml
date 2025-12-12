@@ -21,8 +21,10 @@ deploy-dev-infra:
     CDK_DEPLOY_REGION: $AWS_DEFAULT_REGION
   before_script:
     - cd cdk
+    - npm install -g pnpm
     - pnpm install
   script:
     - cdk synth
     - cdk diff
+rollback-dev-infra:
 
