@@ -6,6 +6,7 @@ import {
   NodeVersion,
 } from 'truemark-cdk-lib/aws-codepipeline';
 import {ComputeType} from 'aws-cdk-lib/aws-codebuild';
+import {AwsRegion, Connection, Zone} from './globals.mjs';
 import {BookstackStage, RegionalStageProps} from "./regional-stage.mjs";
 
 export interface PlatformPipelineStackProps extends ExtendedStackProps {
