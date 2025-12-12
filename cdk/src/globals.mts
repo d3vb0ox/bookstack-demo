@@ -8,7 +8,7 @@ export enum AwsRegion {
   Oregon = 'us-west-2',
 }
 
-export enum VpcId {
+export enum Vpc {
   DevOregon = 'vpc-06f99c19165a865f5',
 }
 
