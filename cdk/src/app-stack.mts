@@ -57,13 +57,6 @@ export interface BookstackProps extends ExtendedStackProps {
      );
      const dbPasswordSecret = ecs.Secret.fromSecretsManager(dbSecretSm, 'password');
 
-     // Read APP_KEY from SSM Parameter Store (SecureString)
-     const appKeyParam = ssm.StringParameter.fromStringParameterName(
-       this,
-       'BookstackAppKeyParam',
-       '/app/bookstack/app_key',
-     );
-
      this.service = new StandardFargateService(this, 'BookstackService', {
        cluster: this.cluster.cluster,
        serviceName: 'bookstack-service',
@@ -76,6 +69,7 @@ export interface BookstackProps extends ExtendedStackProps {
        environment: {
          APP_LANG: 'en',
          APP_URL: AppUrl.DevOregon,
+         APP_KEY: 'base64:dfaME0JYNQ4u3NI4YfFkcLUv4Vm19TYGL/43Kl0UZ0A=',
          DB_HOST: props.databaseHost,
          DB_USERNAME: 'bookstack',
          DB_DATABASE: 'bookstack',
@@ -85,7 +79,6 @@ export interface BookstackProps extends ExtendedStackProps {
        },
        secrets: {
          DB_PASSWORD: dbPasswordSecret,
-         APP_KEY: ecs.Secret.fromSsmParameter(appKeyParam),
        },
        enableRollback: true,
        enableExecuteCommand: true,
@@ -93,8 +86,7 @@ export interface BookstackProps extends ExtendedStackProps {
      });
 
      // Allow the task execution role to read the SecureString from SSM
-     const execRole = this.service.taskDefinition.obtainExecutionRole();
-     appKeyParam.grantRead(execRole);
+     // const execRole = this.service.taskDefinition.obtainExecutionRole();
 
    }
  }
