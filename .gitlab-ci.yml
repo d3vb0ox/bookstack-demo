@@ -1,0 +1,27 @@
+image: node:23-alpine
+cache:
+  paths:
+    - node_modules/
+stages:
+  - build
+  - deploy-test
+  - deploy-prod
+build-job:
+  stage: build
+  script:
+    - echo "Compiling the code..."
+    - cd cdk
+    - npm install -g pnpm
+    - pnpm build
+    - echo "Compile complete."
+deploy-dev-infra:
+  stage: deploy-test
+  variables:
+    CDK_DEPLOY_REGION: $AWS_DEFAULT_REGION
+#  before_script:
+#    - npm install -g aws-cdk@latest
+#    - cdk --version
+  script:
+    - pnpx cdk synth
+    - cd cdk && cdk diff
+
