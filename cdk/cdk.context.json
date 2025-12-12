@@ -1,8 +1,4 @@
 {
-  "vpcId": "vpc-06f99c19165a865f5",
-  "appUrl": "bookstack.pjain.dev.truemark.io",
-  "hostedZoneId": "Z07713053FY75DFAZXR40",
-  "hostedZoneName": "pjain.dev.truemark.io",
   "vpc-provider:account=659932761532:filter.vpc-id=vpc-06f99c19165a865f5:region=us-west-2:returnAsymmetricSubnets=true": {
     "vpcId": "vpc-06f99c19165a865f5",
     "vpcCidrBlock": "10.134.0.0/16",
@@ -49,5 +45,9 @@
   },
   "acknowledged-issue-numbers": [
     34892
-  ]
+  ],
+  "hosted-zone:account=659932761532:domainName=pjain.dev.truemark.io:region=us-west-2": {
+    "Id": "/hostedzone/Z07713053FY75DFAZXR40",
+    "Name": "pjain.dev.truemark.io."
+  }
 }

@@ -22,6 +22,7 @@ export class DataStack extends ExtendedStack {
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
 
+    // Secret for database credentials (username fixed to 'bookstack')
     this.databaseSecret = new secretsmanager.Secret(this, 'DatabaseSecret', {
       generateSecretString: {
         secretStringTemplate: JSON.stringify({username: 'bookstack'}),
@@ -33,10 +34,12 @@ export class DataStack extends ExtendedStack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    // Use existing VPC by ID (from globals)
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
       vpcId: Vpc.DevOregon
     });
 
+    // Security group allowing MySQL from within the VPC only
     const dbSecurityGroup = new ec2.SecurityGroup(this, 'DBSecurityGroup', {
       vpc,
       allowAllOutbound: true,
@@ -50,6 +53,7 @@ export class DataStack extends ExtendedStack {
       'Allow MySQL from VPC',
     );
 
+    // DB parameter group (Aurora MySQL v3)
     const parameterGroup = new rds.ParameterGroup(this, 'ParameterGroup', {
       engine: rds.DatabaseClusterEngine.auroraMysql({
         version: rds.AuroraMysqlEngineVersion.VER_3_11_0,
@@ -57,6 +61,7 @@ export class DataStack extends ExtendedStack {
       removalPolicy: props?.removalPolicy ?? RemovalPolicy.DESTROY,
     });
 
+    // Serverless Aurora MySQL cluster for BookStack
     this.cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
       engine: rds.DatabaseClusterEngine.auroraMysql({
         version: rds.AuroraMysqlEngineVersion.VER_3_11_0,

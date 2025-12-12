@@ -15,18 +15,18 @@ export class BookstackStage extends ExtendedStage {
   constructor(scope: Construct, id: string, props: RegionalStageProps) {
     super(scope, id, props);
 
-    // First: data layer
-    const data = new DataStack(this, 'Data', {
+    // First deploy the data layer (Aurora MySQL + secret)
+    const dataStack = new DataStack(this, 'Data', {
       ...props,
       env: { account: this.account, region: AwsRegion.Oregon },
     });
 
-    // Then: app layer, wiring DB details via env/secrets
+    // Then deploy the app layer and wire DB endpoint + secret name into it
     const app = new BookStack(this, 'Bookstack', {
       ...props,
       vpcId: Vpc.DevOregon,
-      databaseHost: data.cluster.clusterEndpoint.hostname,
-      databaseSecretName: data.databaseSecret.secretName,
+      databaseHost: dataStack.cluster.clusterEndpoint.hostname,
+      databaseSecretName: dataStack.databaseSecret.secretName,
       env: { account: this.account, region: AwsRegion.Oregon },
     });
   }

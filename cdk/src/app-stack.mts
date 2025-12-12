@@ -10,6 +10,7 @@ import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53targets from 'aws-cdk-lib/aws-route53-targets';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import {StandardFargateCluster, StandardFargateService} from "truemark-cdk-lib/aws-ecs";
 
 export interface BookstackProps extends ExtendedStackProps {
@@ -31,6 +32,7 @@ export interface BookstackProps extends ExtendedStackProps {
    constructor(scope: Construct, id: string, props: BookstackProps) {
      super(scope, id, props);
 
+     // Bucket used by BookStack for attachments and file storage
      const assetsBucket = new Bucket(this, 'AssetsBucket', {
        removalPolicy: props.removalPolicy ?? RemovalPolicy.DESTROY,
        autoDeleteObjects: true,
@@ -43,8 +45,10 @@ export interface BookstackProps extends ExtendedStackProps {
        }
      });
 
+     // Use existing VPC (looked up by VPC ID from props)
      const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId });
 
+     // ECS cluster hosting the BookStack service (Fargate)
      this.cluster = new StandardFargateCluster(this, 'Cluster', {
        vpc,
        clusterName: 'bookstack-cluster',
@@ -52,15 +56,22 @@ export interface BookstackProps extends ExtendedStackProps {
        enableExecuteCommandLog: true,
      });
 
-     // Simple ECS Fargate service for Bookstack
-     // Resolve DB password secret from name and key
-     const dbSecretSm = secretsmanager.Secret.fromSecretNameV2(
+     // Resolve DB password secret from Secrets Manager (key: "password")
+     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
        this,
        'DbSecretLookup',
        props.databaseSecretName,
      );
-     const dbPasswordSecret = ecs.Secret.fromSecretsManager(dbSecretSm, 'password');
+     const dbPasswordSecret = ecs.Secret.fromSecretsManager(dbSecret, 'password');
 
+     // Resolve APP_KEY from SSM Parameter Store (SecureString)
+     const appKeyParameter = ssm.StringParameter.fromStringParameterName(
+       this,
+       'BookstackAppKeyParam',
+       '/app/bookstack/app_key',
+     );
+
+     // ECS Fargate service for BookStack
      this.service = new StandardFargateService(this, 'BookstackService', {
        cluster: this.cluster.cluster,
        serviceName: 'bookstack-service',
@@ -73,7 +84,6 @@ export interface BookstackProps extends ExtendedStackProps {
        environment: {
          APP_LANG: 'en',
          APP_URL: `https://${AppUrl.DevOregon}`,
-         APP_KEY: 'base64:dfaME0JYNQ4u3NI4YfFkcLUv4Vm19TYGL/43Kl0UZ0A=',
          DB_HOST: props.databaseHost,
          DB_USERNAME: 'bookstack',
          DB_DATABASE: 'bookstack',
@@ -83,24 +93,25 @@ export interface BookstackProps extends ExtendedStackProps {
        },
        secrets: {
          DB_PASSWORD: dbPasswordSecret,
+         APP_KEY: ecs.Secret.fromSsmParameter(appKeyParameter),
        },
        enableRollback: true,
        enableExecuteCommand: true,
        cpuArchitecture: ecs.CpuArchitecture.ARM64,
-     });
+    });
 
      // ========= Load Balancer =========
-     // Security group for ALB
+     // Security group for the public Application Load Balancer (ALB)
      const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
        vpc,
        description: 'ALB security group for Bookstack',
        allowAllOutbound: true,
      });
-     // Allow inbound HTTP/HTTPS from the Internet
+     // Allow inbound HTTP/HTTPS from the Internet (HTTP only used for redirect)
      albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP for redirect');
      albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS');
 
-     // Internet-facing ALB
+     // Internet-facing ALB in public subnets
      this.loadBalancer = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
        vpc,
        internetFacing: true,
@@ -108,6 +119,7 @@ export interface BookstackProps extends ExtendedStackProps {
        vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
      });
 
+     // Listener on 80 that redirects to HTTPS (443)
      const httpListener = this.loadBalancer.addListener('HttpListener', {
        port: 80,
        open: true,
@@ -118,18 +130,19 @@ export interface BookstackProps extends ExtendedStackProps {
        }),
      });
 
-     // Create ACM certificate for HTTPS (DNS validated)
+     // Hosted zone: prefer lookup by domain. In CI, rely on committed cdk.context.json
+     // to avoid live lookups and role assumptions.
      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
        domainName: props.zone,
      });
 
-     const certificate = new acm.DnsValidatedCertificate(this, 'AppCertificate', {
+     // ACM certificate for the app hostname (use non-deprecated Certificate API)
+     const certificate = new acm.Certificate(this, 'AppCertificate', {
        domainName: AppUrl.DevOregon,
-       hostedZone,
-       region: this.region, // certificate must be in same region as ALB
+       validation: acm.CertificateValidation.fromDns(hostedZone),
      });
 
-     // HTTPS listener forwarding to ECS targets
+     // HTTPS listener forwarding to the ECS service (targets listen on port 80 internally)
      const httpsListener = this.loadBalancer.addListener('HttpsListener', {
        port: 443,
        open: true,
@@ -142,12 +155,13 @@ export interface BookstackProps extends ExtendedStackProps {
        healthCheck: { path: '/', healthyHttpCodes: '200-399' },
      });
 
-     // Allow ALB to reach the service on port 80
-     const serviceSg = this.service.service.connections.securityGroups[0];
-     serviceSg.addIngressRule(albSecurityGroup, ec2.Port.tcp(80), 'ALB to ECS service');
+     // Allow ALB to reach the ECS service on port 80
+     const serviceSecurityGroup = this.service.service.connections.securityGroups[0];
+     serviceSecurityGroup.addIngressRule(albSecurityGroup, ec2.Port.tcp(80), 'ALB to ECS service');
 
      // ========= Route53 record =========
-     // Derive record name from AppUrl and zone
+     // Alias A record: <recordName>.<zone> → ALB DNS name
+     // Derive record name from full host (AppUrl) and zone
      const recordName = AppUrl.DevOregon.replace(`.${props.zone}`, '');
 
      new route53.ARecord(this, 'AppAliasRecord', {
@@ -156,9 +170,11 @@ export interface BookstackProps extends ExtendedStackProps {
        target: route53.RecordTarget.fromAlias(new route53targets.LoadBalancerTarget(this.loadBalancer)),
      });
 
-     // Allow task execution role to read SSM SecureString
-     const execRole = this.service.taskDefinition.obtainExecutionRole();
-     assetsBucket.grantReadWrite(execRole);
-     assetsBucket.grantPutAcl(execRole);
+     // Grant the task execution role permission to read the APP_KEY parameter
+     const executionRole = this.service.taskDefinition.obtainExecutionRole();
+     appKeyParameter.grantRead(executionRole);
+     // Grant the task execution role S3 access for the assets bucket
+     assetsBucket.grantReadWrite(executionRole);
+     assetsBucket.grantPutAcl(executionRole);
    }
  }

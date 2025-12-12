@@ -2,9 +2,9 @@
 
 This repository provides a reference pattern for deploying the BookStack application to Amazon ECS using AWS Fargate, delivered via:
 
-- AWS CodeCommit for source control
+- GitHub (via AWS CodeConnections) for source control
 - AWS CodePipeline + CodeBuild for CI/CD
-- AWS CDK (TypeScript or Python) for infrastructure as code
+- AWS CDK v2 (TypeScript) for infrastructure as code
 
 It is designed to support multiple environments (e.g., `dev`, `staging`, `prod`) with clear promotion flows and environment-specific configuration.
 
@@ -13,70 +13,76 @@ It is designed to support multiple environments (e.g., `dev`, `staging`, `prod`)
 
 The `cdk` directory contains a ready-to-deploy AWS CDK v2 implementation that provisions:
 
-- VPC integration via lookup (you must provide an existing VPC ID)
-- Public Application Load Balancer (ALB) with optional HTTPS via ACM and Route 53 alias record
-- ECS Fargate cluster and a BookStack service running the upstream image `ghcr.io/linuxserver/bookstack`
+- VPC integration via lookup (deploys into an existing VPC)
+- Public Application Load Balancer (ALB) with HTTPS only (HTTP → HTTPS redirect) using ACM
+- Route 53 alias record for the app hostname
+- ECS Fargate cluster and a BookStack service running `ghcr.io/linuxserver/bookstack`
   - ARM64 tasks by default
-  - Private isolated subnets for tasks
-  - Target group health checks on `/`
+  - Tasks in private isolated subnets
+  - Health checks on `/`
 - Data layer:
-  - Aurora-compatible MySQL database (via `DatabaseConstruct`) with credentials in Secrets Manager
-  - S3 bucket for attachments/storage (via `StorageConstruct`)
+  - Aurora MySQL Serverless v2 cluster with credentials in Secrets Manager
+  - DB Security Group allowing MySQL from VPC only
+  - BookStack app is wired to the DB endpoint and `DB_PASSWORD` via Secrets Manager
+  - S3 bucket for attachments/storage (granted to task execution role)
 
-Where to look in code:
+Where to look in code (current implementation):
 - `cdk/src/cdk.mts` — CDK app entrypoint
-- `cdk/src/bookstack-stack.mts` — top-level stack wiring ALB, data, and ECS
-- `cdk/src/constructs/ecs.mts` — ECS cluster/service configuration
-- `cdk/src/constructs/load-balancer.mts` — ALB, listeners, Route 53 alias, and optional ACM certificate
-- `cdk/src/data-stack.mts` — database and storage constructs
+- `cdk/src/pipeline-stack.mts` — CI/CD pipeline using GitHub connection
+- `cdk/src/regional-stage.mts` — deploys DataStack then App stack with wiring
+- `cdk/src/data-stack.mts` — Aurora MySQL (RDS) and DB secret
+- `cdk/src/app-stack.mts` — ECS Fargate service, ALB (HTTPS + redirect), Route 53, S3 permissions
+- `cdk/src/globals.mts` — constants like VPC ID, domains, accounts, regions
 
-Required CDK context (set in `cdk/cdk.context.json` or pass via `-c key=value`):
-- `vpcId` — existing VPC ID to deploy into
-- `appUrl` — full DNS name for BookStack (e.g., `bookstack.example.com`)
-- `hostedZoneId` — Route 53 hosted zone ID containing `appUrl`
-- `hostedZoneName` — hosted zone name (e.g., `example.com`)
+Configuration is driven primarily by `globals.mts` and stack props rather than `cdk.json` context.
+Ensure the following exist in the target account/region:
+- Existing VPC ID (referenced via `Vpc.DevOregon` in `globals.mts`)
+- Hosted zone (e.g., `Zone.Dev` in `globals.mts`)
+- SSM Parameter Store SecureString `/app/bookstack/app_key` containing the BookStack `APP_KEY`
 
 Important behavior and defaults:
-- Image: `ghcr.io/linuxserver/bookstack` with tag `arm64v8-latest` (set in `bookstack-stack.mts`). You can override by changing `imageTag` or by using the SSM parameter logic below.
-- Image tag resolution: if `imageTag` is not supplied, the service will attempt to read from SSM Parameter Store at `/bookstack/production/<service-name>/image-tag` and parse JSON for the `latest` key; otherwise it falls back to `latest`.
-- Service discovery: disabled in `bookstack-stack.mts` (set `enableServiceDiscovery: false`).
-- Networking: tasks run in private isolated subnets; ALB is internet-facing and forwards to the service on port 80.
-- Permissions: the task role is granted access to the created S3 bucket used for storage.
+- Image: `ghcr.io/linuxserver/bookstack:latest` (ARM64). Adjust in `app-stack.mts` if needed.
+- Secrets:
+  - `DB_PASSWORD` is read from Secrets Manager (created in `data-stack.mts`).
+  - `APP_KEY` is read from SSM Parameter Store at `/app/bookstack/app_key` and injected as a container secret.
+- Networking: tasks run in private isolated subnets; ALB is internet-facing and terminates TLS, forwarding to the service on port 80.
+- TLS: HTTP (80) is open only for redirect to HTTPS (443); ACM cert is DNS-validated using the hosted zone.
+- Permissions: the ECS task execution role is granted read/write to the S3 assets bucket.
 
-Container configuration (as defined in `bookstack-stack.mts`):
+Container configuration (as defined in `app-stack.mts`):
 - Port: `80`
 - CPU/Memory: `1024` CPU, `2048` MiB memory
 - Desired count: `1`
 - Env vars set:
   - `APP_LANG=en`
-  - `APP_URL=https://<appUrl>`
-  - `APP_KEY` is currently hard-coded for demo purposes — you should rotate this to a Secrets Manager secret in production
+  - `APP_URL=https://<app domain from globals>`
   - `DB_HOST` from the Aurora cluster endpoint
   - `DB_USERNAME=bookstack`, `DB_DATABASE=bookstack`
   - `STORAGE_TYPE=s3`, `STORAGE_S3_BUCKET=<provisioned-bucket>`, `STORAGE_S3_REGION=<stack region>`
 - Secrets:
-  - `DB_PASSWORD` from Secrets Manager (created by the database construct)
+  - `DB_PASSWORD` from Secrets Manager
+  - `APP_KEY` from SSM Parameter Store (`/app/bookstack/app_key`)
 
 Quick start (cdk):
-1. Prereqs: Node.js 20+, AWS CLI configured, and AWS CDK v2
-2. Configure context in `cdk/cdk.context.json` (copy and edit the existing example) or pass `-c` flags
-   - Required keys: `vpcId`, `appUrl`, `hostedZoneId`, `hostedZoneName`
-3. Install dependencies and deploy
-   - `cd cdk`
-   - `npm install`
-   - Optionally: `npx cdk bootstrap aws://<ACCOUNT>/<REGION>` (first-time per account/region)
-   - `npm run deploy` (or `npx cdk deploy`)
-4. After deploy, access BookStack at `https://<appUrl>`
+1. Prereqs: Node.js 22+, AWS CLI configured, AWS CDK v2, and pnpm
+2. Ensure prerequisites exist in AWS (VPC, hosted zone, and SSM parameter `/app/bookstack/app_key`)
+3. Install and synthesize
+   - `pnpm -r i`
+   - `cd cdk && pnpm build && pnpx cdk synth`
+4. Deploy pipeline or stacks
+   - Pipeline (recommended): repo/branch configured in `pipeline-stack.mts`; deploy `PlatformPipelineStack`
+   - Direct: `pnpx cdk deploy` appropriate stacks/stages
+5. After deploy, access BookStack at `https://<app domain from globals>`
 
 Notes and recommendations:
-- Replace the demo `APP_KEY` with a secret in Secrets Manager and wire it in similar to `DB_PASSWORD`.
-- If using the SSM parameter-based image tag flow, write a JSON payload with a `latest` field to `/bookstack/production/bookstack-service/image-tag` (or the service name you choose), for example: `{ "latest": "arm64v8-latest" }`.
-- By default, the ALB creates an HTTPS listener only when both `hostedZoneName` and a matching ACM certificate can be issued for `appUrl`; otherwise HTTP is used.
+- Keep `APP_KEY` in SSM Parameter Store (SecureString) and restrict IAM to least privilege.
+- Consider enabling access logging on the ALB and lifecycle policies on the S3 bucket.
+- For production, tune Aurora capacity and enable Multi-AZ if required.
 
 
 ## What you get
 - A recommended AWS architecture for BookStack on ECS with Fargate
-- Example CI/CD flow using CodeCommit → CodePipeline → CodeBuild → ECS (via CDK)
+- Example CI/CD flow using GitHub → CodePipeline/CodeBuild → ECS (via CDK)
 - Environment strategy and promotion workflow
 - Guidance on BookStack configuration (DB, storage, auth) and secret management on ECS
 - Example CDK stack decomposition and suggested repo layout
@@ -107,7 +113,7 @@ Scaling:
 
 ```mermaid
 flowchart LR
-  A[Developer Commit to CodeCommit (dev branch)] --> B[CodePipeline - Dev]
+  A[Developer Commit to GitHub (main)] --> B[CodePipeline - Dev]
   B --> C[CodeBuild: Build Docker & Push to ECR]
   C --> D[CDK Deploy: Update ECS Task/Service]
   D --> E[Automated/Manual Tests]
@@ -172,11 +178,11 @@ Load balancing & TLS:
 
 ## CI/CD Pattern
 
-Source: AWS CodeCommit repository.
+Source: GitHub repository (connected via AWS CodeConnections).
 
 Pipelines: One pipeline per environment or a single multi-stage pipeline with approvals. Example flow:
 
-1. Developer pushes to `dev` branch
+1. Developer pushes to `main` (or configured) branch
 2. CodePipeline (Dev) triggers
    - CodeBuild Image stage: Build Docker image and push to ECR
    - CodeBuild Deploy stage: `cdk synth && cdk deploy` to update ECS Task Definition/Service with new image tag
@@ -220,7 +226,7 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 18
+      nodejs: 22
     commands:
       - npm i -g aws-cdk
   build:
@@ -248,15 +254,15 @@ Each environment directory (e.g., `env/dev/config.yaml`) may define:
 - `alb` listener rules and health check path
 
 Secrets management approaches:
-- Store DB credentials, `APP_KEY`, SMTP and S3 credentials in Secrets Manager. Reference them in the ECS Task Definition `secret` fields.
-- Use separate secrets per environment to avoid cross-env leakage.
+- Store DB credentials in Secrets Manager and `APP_KEY` in SSM Parameter Store (SecureString). Reference them in the ECS Task Definition `secrets`.
+- Use separate secrets/parameters per environment to avoid cross-env leakage.
 
 
 ## DNS & TLS
 
 - Use Route 53 for DNS records like `bookstack.dev.example.com`, `bookstack.staging.example.com`, `bookstack.example.com`.
 - Use ACM certificates for the domain/hosts. Attach to ALB HTTPS listener.
-- Redirect HTTP (80) to HTTPS (443).
+- HTTP (80) is configured only for HTTP→HTTPS redirection.
 
 
 ## Promotion Workflow Diagram (Environments)
