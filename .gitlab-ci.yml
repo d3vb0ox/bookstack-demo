@@ -1,7 +1,7 @@
 image: node:23-alpine
 cache:
   paths:
-    - node_modules/
+    - cdk/node_modules/
 stages:
   - build
   - deploy-test
