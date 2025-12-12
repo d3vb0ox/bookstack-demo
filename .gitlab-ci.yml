@@ -19,11 +19,10 @@ deploy-dev-infra:
   stage: deploy-test
   variables:
     CDK_DEPLOY_REGION: $AWS_DEFAULT_REGION
-#  before_script:
-#    - npm install -g aws-cdk@latest
-#    - cdk --version
-  script:
+  before_script:
     - cd cdk
+    - pnpm install
+  script:
     - cdk synth
     - cdk diff
 
