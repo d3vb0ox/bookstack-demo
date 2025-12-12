@@ -13,7 +13,7 @@ const app = new ExtendedApp({
 });
 
 if (app.account === AwsAccount.Dev) {
-  new PlatformPipelineStack(app, 'Platform', {
+  new PlatformPipelineStack(app, 'Bookstack', {
     repository: 'd3vb0ox/bookstack-demo',
     branch: 'main',
     devMode: true,

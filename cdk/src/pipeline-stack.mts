@@ -27,7 +27,7 @@ export class PlatformPipelineStack extends ExtendedStack {
     // });
 
     const pipeline = new CdkPipeline(this, 'Pipeline', {
-      pipelineName: 'Platform',
+      pipelineName: 'Bookstack',
       cdkDirectory: 'cdk',
       connectionArn: Connection.DevGitHub,
       keyArn: "arn:aws:kms:us-west-2:659932761532:key/a5934ab8-76f0-4c9c-891a-6d2c0b396b55",
