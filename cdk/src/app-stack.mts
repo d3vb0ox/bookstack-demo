@@ -65,10 +65,13 @@ export interface BookstackProps extends ExtendedStackProps {
      const dbPasswordSecret = ecs.Secret.fromSecretsManager(dbSecret, 'password');
 
      // Resolve APP_KEY from SSM Parameter Store (SecureString)
-     const appKeyParameter = ssm.StringParameter.fromStringParameterName(
+     const appKeyParameter = ssm.StringParameter.fromSecureStringParameterAttributes(
        this,
        'BookstackAppKeyParam',
-       '/app/bookstack/app_key',
+       {
+         parameterName: '/app/bookstack/app_key',
+         version: 1,
+       },
      );
 
      // ECS Fargate service for BookStack
