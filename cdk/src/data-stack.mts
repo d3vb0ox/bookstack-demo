@@ -23,7 +23,6 @@ export class DataStack extends ExtendedStack {
     super(scope, id, props);
 
     this.databaseSecret = new secretsmanager.Secret(this, 'DatabaseSecret', {
-      secretName: 'bookstack/mysql-database-credentials',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({username: 'bookstack'}),
         generateStringKey: 'password',
@@ -41,7 +40,6 @@ export class DataStack extends ExtendedStack {
     const dbSecurityGroup = new ec2.SecurityGroup(this, 'DBSecurityGroup', {
       vpc,
       allowAllOutbound: true,
-      securityGroupName: 'bookstack-db-sg',
       description: 'Security group for Bookstack database',
     });
 
@@ -60,7 +58,6 @@ export class DataStack extends ExtendedStack {
     });
 
     this.cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
-      clusterIdentifier: 'bookstack-cluster',
       engine: rds.DatabaseClusterEngine.auroraMysql({
         version: rds.AuroraMysqlEngineVersion.VER_3_11_0,
       }),
