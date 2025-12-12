@@ -21,8 +21,10 @@ deploy-dev-infra:
     CDK_DEPLOY_REGION: $AWS_DEFAULT_REGION
   before_script:
     - npm install -g aws-cdk@latest
+    - npm install -g pnpm
     - cdk --version
     - cd cdk
   script:
+    - pnpm build
     - cdk synth
     - cdk diff
