@@ -73,7 +73,6 @@ export class DataStack extends ExtendedStack {
       serverlessV2MinCapacity: 0,
       serverlessV2MaxCapacity: 1,
       writer: rds.ClusterInstance.serverlessV2('writer', {
-        instanceIdentifier: 'bookstack-writer-01',
         publiclyAccessible: false,
         allowMajorVersionUpgrade: false,
         autoMinorVersionUpgrade: false,
