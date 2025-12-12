@@ -1,0 +1,53 @@
+{
+  "vpcId": "vpc-06f99c19165a865f5",
+  "appUrl": "bookstack.pjain.dev.truemark.io",
+  "hostedZoneId": "Z07713053FY75DFAZXR40",
+  "hostedZoneName": "pjain.dev.truemark.io",
+  "vpc-provider:account=659932761532:filter.vpc-id=vpc-06f99c19165a865f5:region=us-west-2:returnAsymmetricSubnets=true": {
+    "vpcId": "vpc-06f99c19165a865f5",
+    "vpcCidrBlock": "10.134.0.0/16",
+    "ownerAccountId": "659932761532",
+    "availabilityZones": [],
+    "subnetGroups": [
+      {
+        "name": "Isolated",
+        "type": "Isolated",
+        "subnets": [
+          {
+            "subnetId": "subnet-067a1d1fedffebce6",
+            "cidr": "10.134.0.0/19",
+            "availabilityZone": "us-west-2a",
+            "routeTableId": "rtb-041bff271c7fd8670"
+          },
+          {
+            "subnetId": "subnet-00bf36b6a4756a343",
+            "cidr": "10.134.32.0/19",
+            "availabilityZone": "us-west-2b",
+            "routeTableId": "rtb-09c668116e01ac70c"
+          }
+        ]
+      },
+      {
+        "name": "Public",
+        "type": "Public",
+        "subnets": [
+          {
+            "subnetId": "subnet-0c8ef906101b2319b",
+            "cidr": "10.134.196.0/22",
+            "availabilityZone": "us-west-2a",
+            "routeTableId": "rtb-0524d5e6a4c557ce3"
+          },
+          {
+            "subnetId": "subnet-0cfb2e67c99044b0d",
+            "cidr": "10.134.200.0/22",
+            "availabilityZone": "us-west-2b",
+            "routeTableId": "rtb-0524d5e6a4c557ce3"
+          }
+        ]
+      }
+    ]
+  },
+  "acknowledged-issue-numbers": [
+    34892
+  ]
+}
