@@ -23,6 +23,7 @@ deploy-dev-infra:
 #    - npm install -g aws-cdk@latest
 #    - cdk --version
   script:
-    - pnpx cdk synth
-    - cd cdk && cdk diff
+    - cd cdk
+    - cdk synth
+    - cdk diff
 
