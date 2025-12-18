@@ -8,6 +8,7 @@ import {
 import {ComputeType} from 'aws-cdk-lib/aws-codebuild';
 import {AwsRegion, Connection, Zone} from './globals.mjs';
 import {BookstackStage, RegionalStageProps} from "./regional-stage.mjs";
+import {Key} from "aws-cdk-lib/aws-kms";
 
 export interface PlatformPipelineStackProps extends ExtendedStackProps {
   readonly devMode?: boolean;
@@ -22,15 +23,15 @@ export class PlatformPipelineStack extends ExtendedStack {
     super(scope, id, props);
 
     // CDK pipeline building and deploying this repository from GitHub
-    // const key = Key.fromLookup(this, 'Key', {
-    //   aliasName: 'alias/cdk',
-    // });
+    const key = Key.fromLookup(this, 'Key', {
+      aliasName: 'alias/alias/cdk',
+    });
 
     const pipeline = new CdkPipeline(this, 'Pipeline', {
       pipelineName: 'Bookstack',
       cdkDirectory: 'cdk',
       connectionArn: Connection.DevGitHub,
-      keyArn: "arn:aws:kms:us-west-2:659932761532:key/a5934ab8-76f0-4c9c-891a-6d2c0b396b55",
+      keyArn: key.keyArn,
       repository: props.repository,
       branch: props.branch,
       accountIds: props.accountIds,
