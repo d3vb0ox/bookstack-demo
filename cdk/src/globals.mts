@@ -1,6 +1,6 @@
 // CodeConnection ARN to source repository (GitHub)
 export enum Connection {
-  DevGitHub = 'arn:aws:codeconnections:us-west-2:659932761532:connection/8700961e-922b-4b48-ade7-64a4f25f94f5',
+  DevGitHub = 'arn:aws:codeconnections:us-west-2:659932761532:connection/d02eece4-3b28-4820-8851-27786089f385',
 }
 
 // Supported AWS regions used by the pipeline/stages
